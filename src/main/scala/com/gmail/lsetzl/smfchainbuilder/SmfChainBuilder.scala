@@ -5,6 +5,8 @@ import java.io.File
 import javax.sound.midi._
 
 case class SmfChainBuilder(commands: Seq[Command], channelNumber: Int, trackNumber: Int, section: Section) {
+  def channelNumbers = commands.filter(_.isChannel).map(_.channelNumber).distinct.filter(_ != 0)
+
   def forwardChannel: SmfChainBuilder = copy(channelNumber = channelNumber + 1, trackNumber = 0)
 
   def forwardTrack: SmfChainBuilder = copy(trackNumber = trackNumber + 1)
@@ -37,7 +39,6 @@ case class SmfChainBuilder(commands: Seq[Command], channelNumber: Int, trackNumb
 
     addTrack(commands.filter(_.isSong))
 
-    val channelNumbers = commands.filter(_.isChannel).map(_.channelNumber).distinct.filter(_ != 0)
     channelNumbers.foreach { cn =>
       val inChannelCommands = {
         commands.filter(c => (c.isChannel || c.isTrack) && Seq(cn, 0).contains(c.channelNumber))
