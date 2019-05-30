@@ -1,4 +1,4 @@
-import javax.sound.midi.MidiEvent
+import com.gmail.lsetzl.simplemidiwriterwrapper.{MidiEvent, Track => MidiTrack}
 
 package object Plan {
   val Resolution: Int = 48
@@ -26,20 +26,33 @@ case class BuilderBody(channelNumber: ChannelNumber, trackNumber: TrackNumber, s
                        commands: Seq[Command]) {
   def add(a: Command): BuilderBody = copy(commands = commands :+ a)
 
-  def add(a: Seq[Command]): BuilderBody = commands.foldLeft(this) { (z, c) => z.add(c) }
+  def add(a: Seq[Command]): BuilderBody = a.foldLeft(this) { (z, c) => z.add(c) }
+
+  def write(): Unit = ???
+
+  def tracks: Seq[MidiTrack] = {
+    commands.groupBy(_.channelNumber).flatMap { (channelNumber: ChannelNumber, channelCommands: Seq[Command]) =>
+      channelCommands.groupBy(_.trackNumber).flatMap { (trackNumber: TrackNumber, trackCommands: Seq[Command]) =>
+        trackCommands.flatMap {
+          case c: Command.Note => List(MidiEvent.NoteOn(), MidiEvent.NoteOff())
+        }
+      }
+    }
+  }
 }
 
 sealed trait Builder {
-  val body: BuilderBody
   type T
 
-  def update(a: BuilderBody): T
+  protected val body: BuilderBody
 
-  def on(section: Section): T = update(body.on(section))
+  protected def update(a: BuilderBody): T
 
-  def add(command: Command): T = update(body.add(command))
+  def on(section: Section): T = update(body.copy(section = section))
 
-  def add(commands: Seq[Command]): T = update(body.add(commands))
+  protected def add(command: Command): T = update(body.add(command))
+
+  protected def add(commands: Seq[Command]): T = update(body.add(commands))
 }
 
 object Builder {
@@ -71,7 +84,7 @@ object Builder {
 
     def channel: Channel = Channel(body)
 
-    def notes(mml: String): Track = add(NoteBuilder.build(mml))
+    def notes(mmls: String*): Track = add(NoteBuilder.build(mmls.mkString))
 
     def write(path: String): Unit = ???
   }
@@ -118,62 +131,45 @@ object Section {
 }
 
 object NoteBuilder {
-  def build(mml: String): Seq[Command] = ???
+  def build(mml: String): Seq[Command.Note] = ???
 }
 
-sealed trait Command
+sealed trait Command {
+  val channelNumber: ChannelNumber = ChannelNumber.All
+  val trackNumber: TrackNumber = TrackNumber.All
+  val section: Section
+  val values: Values
+}
 
 object Command {
-
-  trait Song extends Command
-
-  trait Channel extends Song {
-    val channelNumber: ChannelNumber
-  }
-
-  trait Track extends Channel {
-    val trackNumber: TrackNumber
-  }
-
-  trait HasMidiEvents {
-    val section: Section
-    def midiEvents: Seq[MidiEvent]
-  }
-
-  trait HasValues {
-    val values: Values
-  }
-
-  case class MasterVolume(override val section: Section,
-                          override val values: Values) extends Song with HasMidiEvents with HasValues {
-    override def midiEvents: Seq[MidiEvent] = ???
-  }
+  case class MasterVolume(override val section: Section, override val values: Values) extends Command
 
   case class Expression(override val channelNumber: ChannelNumber,
-                        override val section: Section,
-                        override val values: Values) extends Channel with HasMidiEvents with HasValues {
-    override def midiEvents: Seq[MidiEvent] = ???
-  }
+                        override val section: Section, override val values: Values) extends Command
 
+  case class Note(override val channelNumber: ChannelNumber, override val trackNumber: TrackNumber,
+                  override val section: Section, override val values: Values) extends Command
 }
 
 case class Values(start: Int, end: Int)
 
 
 object Test extends SmfChainBuilderApp {
-  val a = 0.0 ~ 4.0
+  val p = 0.0 ~ 8.0
+  val pa = 9.0 ~ 16.0
 
   song
-    .section(a).masterVolume(0 ~ 127)
+    .on(p).masterVolume(0 ~ 127)
 
     .channel
     .expression(127)
     .track
-    .notes("c..c..c.c..b..a. a6g.g8 a..a..a.g.a.g.d. e4a4b4c4")
+    .on(p).notes("c..c..c.c..b..a./a6g.g8/a..a..a.g.a.g.d./e4a4b4c4", "e6d.d8/e6d.d8/a..b..c.a..b..c./c4b4a4b4")
+    .on(pa).notes("b6c.c8/.16/.16/.16")
 
     .channel
     .track
-    .notes("f8g8 a16 f8g8 a8g8")
+    .on(p).notes("f8g8/a16/f8g8/a8g8/f16/e16/d16/g4g4g4g4")
 
     .write("test.mid")
 }
