@@ -30,15 +30,17 @@ case class BuilderBody(channelNumber: ChannelNumber, trackNumber: TrackNumber, s
 
   def write(): Unit = ???
 
-  def tracks: Seq[MidiTrack] = {
-    commands.groupBy(_.channelNumber).flatMap { (channelNumber: ChannelNumber, channelCommands: Seq[Command]) =>
-      channelCommands.groupBy(_.trackNumber).flatMap { (trackNumber: TrackNumber, trackCommands: Seq[Command]) =>
-        trackCommands.flatMap {
-          case c: Command.Note => List(MidiEvent.NoteOn(), MidiEvent.NoteOff())
-        }
-      }
-    }
+  def tracks: Seq[MidiTrack] = (1 to channelNumber.value).flatMap(channelMidiTrack(n, cs) }
   }
+
+  private def channelMidiTrack(channelNumber: ChannelNumber, channelCommands: Seq[Command]): Seq[MidiTrack] = ???
+//  {
+//    channelCommands.groupBy(_.trackNumber).flatMap { (n: TrackNumber, cs: Seq[Command]) => trackMidiTrack(n, cs) }
+//  }
+
+  private def trackMidiTrack(trackNumber: TrackNumber, trackCommands: Seq[Command]): MidiTrack = ???
+
+
 }
 
 sealed trait Builder {
