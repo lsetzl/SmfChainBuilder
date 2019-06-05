@@ -19,28 +19,29 @@ trait SmfChainBuilderApp extends App {
 
   implicit def DoubleToSection(value: Double): Section = Section(value, value)
 
-  def song: Builder.Song = Builder.Song(BuilderBody(ChannelNumber.All, TrackNumber.All, Section.All, Nil))
+  def song: Builder.Song = Builder.Song(BuilderBody())
 }
 
-case class BuilderBody(channelNumber: ChannelNumber, trackNumber: TrackNumber, section: Section,
-                       commands: Seq[Command]) {
-  def add(a: Command): BuilderBody = copy(commands = commands :+ a)
+case class Track(channelNumber: ChannelNumber, commands: Seq[Command]) {
+  def +(a: Seq[Command]): Track = copy(commands = commands ++ a)
+}
 
-  def add(a: Seq[Command]): BuilderBody = a.foldLeft(this) { (z, c) => z.add(c) }
+object Track {
+  def apply(channelNumber: ChannelNumber): Track = Track(channelNumber, Nil)
+}
+
+case class BuilderBody(tracks: Seq[Track], section: Section) {
+  def updateLastTrack(f: Track => Track): BuilderBody = copy(tracks = tracks.updated(tracks.length - 1, f(tracks.last)))
+
+  def +(a: Seq[Command]): BuilderBody = updateLastTrack(_ + a)
+
+  def section(a: Section): BuilderBody = copy(section = section)
 
   def write(): Unit = ???
+}
 
-  def tracks: Seq[MidiTrack] = (1 to channelNumber.value).flatMap(channelMidiTrack(n, cs) }
-  }
-
-  private def channelMidiTrack(channelNumber: ChannelNumber, channelCommands: Seq[Command]): Seq[MidiTrack] = ???
-//  {
-//    channelCommands.groupBy(_.trackNumber).flatMap { (n: TrackNumber, cs: Seq[Command]) => trackMidiTrack(n, cs) }
-//  }
-
-  private def trackMidiTrack(trackNumber: TrackNumber, trackCommands: Seq[Command]): MidiTrack = ???
-
-
+object BuilderBody {
+  def apply(): BuilderBody = BuilderBody(Nil, Section(Tick.Zero, Tick(4)))
 }
 
 sealed trait Builder {
@@ -50,11 +51,9 @@ sealed trait Builder {
 
   protected def update(a: BuilderBody): T
 
-  def on(section: Section): T = update(body.copy(section = section))
+  def on(a: Section): T = update(body.section(a))
 
-  protected def add(command: Command): T = update(body.add(command))
-
-  protected def add(commands: Seq[Command]): T = update(body.add(commands))
+  protected def +(a: Command*): T = update(body + a)
 }
 
 object Builder {
