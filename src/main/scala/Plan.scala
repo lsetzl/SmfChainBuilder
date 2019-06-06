@@ -7,17 +7,17 @@ package object Plan {
 
 trait SmfChainBuilderApp extends App {
 
-  implicit class ExtendedInt(value: Int) {
-    def ~(end: Int): Values = Values(value, end)
+  implicit class ExtendedInt(a: Int) {
+    def ~(b: Int): Parameters = Parameters(a, b)
   }
 
-  implicit def IntToValues(value: Int): Values = Values(value, value)
+  implicit def IntToParameters(a: Int): Parameters = Parameters(a, a)
 
-  implicit class ExtendedDouble(value: Double) {
-    def ~(end: Double): Section = Section(value, end)
+  implicit class ExtendedDouble(a: Double) {
+    def ~(b: Double): Parameters = Parameters(a, b)
   }
 
-  implicit def DoubleToSection(value: Double): Section = Section(value, value)
+  implicit def DoubleToParameters(a: Double): Parameters = Parameters(a, a)
 
   def song: Builder.Song = Builder.Song(BuilderBody())
 }
@@ -53,7 +53,11 @@ sealed trait Builder {
 
   def on(a: Section): T = update(body.section(a))
 
-  protected def +(a: Command*): T = update(body + a)
+  protected def add(a: Command): T = add(List(a))
+
+  protected def add(a: Seq[Command]): T = update(body + a)
+
+  def write(path: String): Unit = ???
 }
 
 object Builder {
@@ -63,9 +67,11 @@ object Builder {
 
     override def update(a: BuilderBody): T = Song(a)
 
-    def masterVolume(values: Values): Song = add(Command.MasterVolume(body.section, values))
-
     def channel: Channel = Channel(body)
+
+    def tempo(parameters: Parameters): Song = add(Command.Tempo(body.section, parameters.toValues))
+
+    def volume(parameters: Parameters): Song = add(Command.ControlChange(body.section, 7, parameters.toPercents))
   }
 
   case class Channel(override val body: BuilderBody) extends Builder {
@@ -75,7 +81,7 @@ object Builder {
 
     def track: Track = Track(body)
 
-    def expression(values: Values): Channel = add(Command.Expression(body.channelNumber, body.section, values))
+    def expression(values: Values): Channel = add(Command.Expression(body.section, values))
   }
 
   case class Track(override val body: BuilderBody) extends Builder {
@@ -86,8 +92,6 @@ object Builder {
     def channel: Channel = Channel(body)
 
     def notes(mmls: String*): Track = add(NoteBuilder.build(mmls.mkString))
-
-    def write(path: String): Unit = ???
   }
 
 }
@@ -100,14 +104,6 @@ object ChannelNumber {
   val All: ChannelNumber = ChannelNumber(0)
 }
 
-case class TrackNumber(value: Int) {
-  require(value >= 0)
-}
-
-object TrackNumber {
-  val All: TrackNumber = TrackNumber(0)
-}
-
 case class Tick(value: Int) {
   require(value >= 0)
 }
@@ -117,50 +113,56 @@ object Tick {
   val Max: Tick = Tick(Int.MaxValue)
 }
 
-case class Section(start: Tick, end: Tick) {
-
-}
-
-object Section {
-  val All: Section = Section(Tick.Zero, Tick.Max)
-
-  def apply(start: Int, end: Int): Section = Section(Tick(start), Tick(end))
-
-  def apply(startBar: Double, endBar: Double): Section = {
-    Section((startBar * Plan.TicksInBar).toInt, (endBar * Plan.TicksInBar).toInt)
-  }
-}
-
 object NoteBuilder {
   def build(mml: String): Seq[Command.Note] = ???
 }
 
 sealed trait Command {
-  val channelNumber: ChannelNumber = ChannelNumber.All
-  val trackNumber: TrackNumber = TrackNumber.All
   val section: Section
-  val values: Values
 }
 
 object Command {
-  case class MasterVolume(override val section: Section, override val values: Values) extends Command
+  case class Tempo(override val section: Section, values: Values) extends Command
 
-  case class Expression(override val channelNumber: ChannelNumber,
-                        override val section: Section, override val values: Values) extends Command
+  case class Msb(override val section: Section, value: Int) extends Command
 
-  case class Note(override val channelNumber: ChannelNumber, override val trackNumber: TrackNumber,
-                  override val section: Section, override val values: Values) extends Command
+  case class Modulation(override val section: Section, percents: Percents) extends Command
+
+  case class Volume(override val section: Section, percents: Percents) extends Command
+
+  case class Expression(override val section: Section, percents: Percents) extends Command
+
+  case class Volume(override val section: Section, percents: Percents) extends Command
+
+  case class Note(override val section: Section, key: Int) extends Command
+}
+
+case class Parameters(start: Double, end: Double) {
+  def toValues: Values = Values(start.toInt, end.toInt)
+
+  def toPercents: Percents = Percents(start, end)
+
+  def toSections: Section = {
+    Section(Tick(start.toInt * 48 + (start * 100).toInt % 100), Tick(end.toInt * 48 + (end * 100).toInt % 100))
+  }
 }
 
 case class Values(start: Int, end: Int)
 
+case class Percents(start: Double, end: Double)
+
+case class Section(start: Tick, end: Tick)
+
+object Section {
+  val All: Section = Section(Tick.Zero, Tick.Max)
+}
 
 object Test extends SmfChainBuilderApp {
   val p = 0.0 ~ 8.0
   val pa = 9.0 ~ 16.0
 
   song
-    .on(p).masterVolume(0 ~ 127)
+    .on(p).volume(0 ~ 127)
 
     .channel
     .expression(127)
